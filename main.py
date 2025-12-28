@@ -33,9 +33,10 @@ app = Client(
 user_manager = UserManager()
 
 STOP_REQUESTED = False
-MESSAGE_UPDATE_INTERVAL = 5
+MESSAGE_UPDATE_INTERVAL = 10
 last_edited = {}
 active_downloads = {}
+download_progress = {}
 youtube_selection_cache = {}
 
 class DownloadCancelled(Exception):
@@ -170,6 +171,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
         # Use UUID for unique filenames to prevent collisions between users
         video_id = str(uuid.uuid4())
         active_downloads[video_id] = {'action': None, 'last_info': None}
+        download_progress[video_id] = {'status': 'starting', 'downloaded': 0, 'total': 0, 'speed': 0, 'eta': 0, 'title': 'Video', 'ext': 'mp4'}
 
         await logger.log(app, message, f"Starting download: {url} (ID: {video_id})", level="INFO")
 
@@ -191,9 +193,73 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
         loop = asyncio.get_running_loop()
         gif_deleted = False
 
+        # Start progress update task
+        async def update_progress_message():
+            last_update_time = 0
+            while video_id in active_downloads and not STOP_REQUESTED:
+                try:
+                    now = time.time()
+                    if now - last_update_time < MESSAGE_UPDATE_INTERVAL:
+                        await asyncio.sleep(1)
+                        continue
+
+                    prog = download_progress.get(video_id)
+                    if not prog or prog['status'] != 'downloading':
+                        await asyncio.sleep(1)
+                        continue
+
+                    # Delete GIF if needed
+                    nonlocal gif_deleted
+                    if not gif_deleted:
+                        try:
+                            await gif_msg.delete()
+                            gif_deleted = True
+                        except Exception:
+                            pass
+
+                    last_update_time = now
+
+                    title = prog.get('title', 'Video')
+                    ext = prog.get('ext', 'mp4')
+                    total = prog.get('total', 0)
+                    downloaded = prog.get('downloaded', 0)
+                    speed = prog.get('speed', 0)
+                    eta = prog.get('eta', 0)
+
+                    if total:
+                        percentage = downloaded * 100 / total
+                        progress_str = f"{percentage:.1f}%"
+                        total_str = format_bytes(total)
+                    else:
+                        progress_str = "N/A"
+                        total_str = "N/A"
+
+                    downloaded_str = format_bytes(downloaded)
+                    speed_str = f"{format_bytes(speed)}/s" if speed else "N/A"
+                    eta_str = format_time(eta) if eta else "N/A"
+
+                    text = (
+                        f"Downloading: `{title}.{ext}`\n\n"
+                        f"💾 Size: {downloaded_str} / {total_str}\n"
+                        f"📊 Progress: {progress_str}\n"
+                        f"🚀 Speed: {speed_str}\n"
+                        f"⏳ ETA: {eta_str}"
+                    )
+
+                    try:
+                        await msg.edit(text, reply_markup=keyboard)
+                    except Exception:
+                        pass
+
+                except Exception as e:
+                    print(f"Error in update loop: {e}")
+
+                await asyncio.sleep(1)
+
+        progress_task = asyncio.create_task(update_progress_message())
+
         # Progress hook for yt-dlp (runs in a thread)
         def progress(d):
-            nonlocal gif_deleted
             if STOP_REQUESTED:
                 raise Exception("Bot shutting down")
 
@@ -220,69 +286,24 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                 raise DownloadCancelled(action)
 
             if d['status'] == 'downloading':
-                # Delete GIF on first progress update
-                if not gif_deleted:
-                    try:
-                        asyncio.run_coroutine_threadsafe(gif_msg.delete(), loop)
-                        gif_deleted = True
-                    except Exception:
-                        pass
-
                 try:
-                    # Store info for partial send
-                    if active_downloads.get(video_id):
-                        active_downloads[video_id]['last_info'] = d.get('info_dict')
+                    # Update shared state
+                    if video_id in download_progress:
+                        download_progress[video_id].update({
+                            'status': 'downloading',
+                            'title': d.get('info_dict', {}).get('title', 'Video'),
+                            'ext': d.get('info_dict', {}).get('ext', 'mp4'),
+                            'total': d.get('total_bytes') or d.get('total_bytes_estimate'),
+                            'downloaded': d.get('downloaded_bytes', 0),
+                            'speed': d.get('speed'),
+                            'eta': d.get('eta'),
+                            'info_dict': d.get('info_dict') # Store for partial send
+                        })
 
-                    now = time.time()
-                    key = f"{message.chat.id}-{msg.id}"
+                        # Also update active_downloads for partial send logic
+                        if active_downloads.get(video_id):
+                            active_downloads[video_id]['last_info'] = d.get('info_dict')
 
-                    if key in last_edited:
-                        if now - last_edited[key] < MESSAGE_UPDATE_INTERVAL:
-                            return
-
-                    last_edited[key] = now
-
-                    title = d.get('info_dict', {}).get('title', 'Video')
-                    ext = d.get('info_dict', {}).get('ext', 'mp4')
-
-                    total = d.get('total_bytes') or d.get('total_bytes_estimate')
-                    downloaded = d.get('downloaded_bytes', 0)
-                    speed = d.get('speed')
-                    eta = d.get('eta')
-
-                    # Fragment info
-                    fragment_index = d.get('fragment_index')
-                    fragment_count = d.get('fragment_count')
-
-                    if total:
-                        percentage = downloaded * 100 / total
-                        progress_str = f"{percentage:.1f}%"
-                        total_str = format_bytes(total)
-                    else:
-                        progress_str = "N/A"
-                        total_str = "N/A"
-
-                    downloaded_str = format_bytes(downloaded)
-                    speed_str = f"{format_bytes(speed)}/s" if speed else "N/A"
-                    eta_str = format_time(eta) if eta else "N/A"
-
-                    frag_str = ""
-                    if fragment_index and fragment_count:
-                        frag_str = f"\n🧩 Fragments: {fragment_index}/{fragment_count}"
-
-                    text = (
-                        f"Downloading: `{title}.{ext}`\n\n"
-                        f"💾 Size: {downloaded_str} / {total_str}\n"
-                        f"📊 Progress: {progress_str}\n"
-                        f"🚀 Speed: {speed_str}\n"
-                        f"⏳ ETA: {eta_str}"
-                        f"{frag_str}"
-                    )
-                    try:
-                        # Schedule the edit on the main event loop
-                        asyncio.run_coroutine_threadsafe(msg.edit(text, reply_markup=keyboard), loop)
-                    except Exception:
-                        pass
                 except Exception as e:
                     print(f"Error in progress hook: {e}")
         if not os.path.exists(config.output_folder):
@@ -298,6 +319,8 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             # 'http_chunk_size': 52428800, # 50MB
             'remote_components': {'ejs:github'},
             'concurrent_fragment_downloads': 5,
+            'quiet': False,
+            'noprogress': False,
         }
 
         if audio:
@@ -327,6 +350,14 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
         try:
             info = await asyncio.to_thread(run_yt_dlp)
 
+            # Stop progress task
+            if not progress_task.done():
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    pass
+
             # Find the downloaded file
             if 'requested_downloads' in info:
                 filepath = info['requested_downloads'][0]['filepath']
@@ -338,6 +369,14 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                         break
 
         except DownloadCancelled as e:
+            # Stop progress task
+            if not progress_task.done():
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    pass
+
             if e.action == 'del':
                 await msg.edit("❌ Download cancelled.")
                 await logger.log(app, message, f"Download cancelled by user: {video_id}", level="WARNING")
@@ -351,10 +390,26 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                     info = {'title': 'Partial Download', 'ext': 'mp4'}
 
         except yt_dlp.utils.DownloadError as e:
+            # Stop progress task
+            if not progress_task.done():
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    pass
+
             await msg.edit('Invalid URL or download error.')
             await logger.log(app, message, f"Download error: {e}", level="ERROR")
             return
         except Exception as e:
+            # Stop progress task
+            if not progress_task.done():
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    pass
+
             print(f"General error: {e}")
             await msg.edit(f"Error: {e}")
             await logger.log(app, message, f"General error: {e}", level="ERROR")
@@ -469,6 +524,8 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             # Cleanup
             if video_id in active_downloads:
                 del active_downloads[video_id]
+            if video_id in download_progress:
+                del download_progress[video_id]
 
             # Remove main file (renamed or original)
             if filepath and os.path.exists(filepath):
