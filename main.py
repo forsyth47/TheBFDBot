@@ -33,7 +33,7 @@ app = Client(
 user_manager = UserManager()
 
 STOP_REQUESTED = False
-MESSAGE_UPDATE_INTERVAL = 10
+MESSAGE_UPDATE_INTERVAL = 5
 last_edited = {}
 active_downloads = {}
 youtube_selection_cache = {}
@@ -297,7 +297,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             'max_filesize': config.max_filesize,
             # 'http_chunk_size': 52428800, # 50MB
             'remote_components': {'ejs:github'},
-            'concurrent_fragment_downloads': 10,
+            'concurrent_fragment_downloads': 5,
         }
 
         if audio:
@@ -536,6 +536,24 @@ async def download_audio_command(client, message):
     await logger.log(app, message, f"Audio command received: {text}", level="INFO")
     await download_video(message, text, True)
 
+@app.on_message(filters.command(['sendVideo']))
+async def send_video_command(client, message):
+    text = get_text(message)
+    if not text:
+        await message.reply('Invalid usage, use `/sendVideo url`')
+        return
+
+    await logger.log(app, message, f"SendVideo command received: {text}", level="INFO")
+
+    msg = await message.reply("Sending video...")
+    try:
+        await message.reply_video(video=text, caption=f"🔗 [Original Link]({text})")
+        await msg.delete()
+        await logger.log(app, message, f"SendVideo success: {text}", level="SUCCESS")
+    except Exception as e:
+        await msg.edit(f"Failed to send video. Error: {e}")
+        await logger.log(app, message, f"SendVideo failed: {e}", level="ERROR")
+
 @app.on_message(filters.command(['settings']))
 async def settings_command(client, message):
     user_id = message.from_user.id
@@ -621,7 +639,7 @@ async def callback(client, call: CallbackQuery):
     else:
         await call.answer("You didn't send the request", show_alert=True)
 
-@app.on_message(filters.private & ~filters.command(['start', 'help', 'download', 'audio', 'custom']))
+@app.on_message(filters.private & ~filters.command(['start', 'help', 'download', 'audio', 'custom', 'sendVideo']))
 async def handle_private_messages(client, message):
     text = message.text or message.caption
     if not text:
