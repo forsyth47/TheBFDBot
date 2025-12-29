@@ -46,7 +46,7 @@ app = Client(
 user_manager = UserManager()
 
 STOP_REQUESTED = False
-MESSAGE_UPDATE_INTERVAL = 10
+MESSAGE_UPDATE_INTERVAL = 5
 last_edited = {}
 active_downloads = {}
 download_progress = {}
@@ -114,7 +114,7 @@ async def start_command(client: Client, message: Message):
             print(f"Redis error: {e}")
 
     await message.reply(
-        "**Send me a video link** and I'll download it for you, works with **YouTube**, **Twitter**, **TikTok**, **Reddit** and more.\n\n_Powered by_ [yt-dlp](https://github.com/yt-dlp/yt-dlp/)",
+        f"**Send me a video link** and I'll download it for you, works with **YouTube**, **Twitter**, **TikTok**, **Reddit** and more.\n\n__Powered by__ [yt-dlp](https://github.com/yt-dlp/yt-dlp/)\nPM @{config.adminUsernames[0]} any issues or suggestions!\n\n",
         disable_web_page_preview=True
     )
 
@@ -216,7 +216,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
         active_downloads[video_id] = {'action': None, 'last_info': None}
         download_progress[video_id] = {'status': 'starting', 'downloaded': 0, 'total': 0, 'speed': 0, 'eta': 0, 'title': 'Video', 'ext': 'mp4'}
 
-        await logger.log(app, message, f"Starting download: {url} (ID: {video_id})", level="INFO")
+        await logger.log(app, message, f"Starting download: {url} (ID: {video_id})", level="DOWNLOAD")
 
         # Buttons
         cancel_btn = InlineKeyboardButton("❌ Cancel", callback_data=f"cancel|del|{video_id}")
@@ -630,7 +630,7 @@ async def download_command(client, message):
         await message.reply('Invalid usage, use `/download url`')
         return
 
-    await logger.log(app, message, f"Download command received: {text}", level="INFO")
+    await logger.log(app, message, f"Download command received: {text}", level="DOWNLOAD")
     asyncio.create_task(download_video(message, text))
 
 @app.on_message(filters.command(['audio']))
@@ -737,6 +737,51 @@ async def yt_callback(client, call: CallbackQuery):
         fmt = f"bestvideo[height={res}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height={res}]+bestaudio/best[height={res}]"
         asyncio.create_task(download_video(target_message, url, audio=False, format_id=fmt))
 
+#Allow to run linux command directly on subprocess and return output
+@app.on_message(filters.private & filters.command(['c']))
+async def command_handler(client, message):
+    print(f"Command received from {message.from_user.username}/{message.from_user.id}: {message.text}")
+    await logger.log(f"Command received from {message.from_user.username}/{message.from_user.id}: {message.text}", level="INFO")
+    if message.from_user.username.lower() not in [admin.lower() for admin in config.adminUsernames]:
+        await message.reply("You are not authorized to use this command.")
+        return
+
+    command = get_text(message)
+    if not command:
+        # example grep 'message received' while ignoring if the line has [COMMAND]
+        await message.reply("Invalid usage, use `/c your_command`\n\nExample: `/c tail -n 25 log.txt | grep 'DOWNLOAD' | grep -v '\\[COMMAND\\]'`")
+        return
+
+    await logger.log(app, message, f"Command received: {command}", level="COMMAND")
+
+    try:
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        output = ""
+        if stdout:
+            output += f"**Output:**\n```\n{stdout.decode()}\n```\n"
+        if stderr:
+            output += f"**Error:**\n```\n{stderr.decode()}\n```\n"
+
+        if not output:
+            output = "No output returned."
+
+        # Telegram message limit
+        if len(output) > 4000:
+            output = output[:4000] + "\n\n[Output truncated...]"
+
+        await message.reply(output, disable_web_page_preview=True)
+        # await logger.log(app, message, f"Command executed successfully: {command}", level="SUCCESS")
+    except Exception as e:
+        await message.reply(f"Command execution failed: {e}")
+        await logger.log(app, message, f"Command execution failed: {e}", level="ERROR")
+
 @app.on_callback_query()
 async def callback(client, call: CallbackQuery):
     if call.message.reply_to_message and call.from_user.id == call.message.reply_to_message.from_user.id:
@@ -752,7 +797,7 @@ async def handle_private_messages(client, message):
     if not text:
         return
 
-    await logger.log(app, message, f"Private message received: {text}", level="INFO")
+    await logger.log(app, message, f"Private message received: {text}", level="DOWNLOAD")
     asyncio.create_task(download_video(message, text))
 
 if __name__ == "__main__":

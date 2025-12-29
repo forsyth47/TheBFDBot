@@ -1,3 +1,5 @@
+adminUsernames = ["forsyth47", "tung_tung_sahur"]  # list of admin usernames
+
 token = ""  # telegram bot token
 api_id = 123456  # telegram api id
 api_hash = "1234567890abcdefghu=ijk"  # telegram api hash
