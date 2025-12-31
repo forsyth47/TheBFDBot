@@ -19,8 +19,23 @@ A simple, high-performance Telegram bot to download videos from YouTube, TikTok,
    ```
 
 2. **Install dependencies**
+
+   It requires python3.12 and ffmpeg
+   To install ffmpeg:
    ```bash
-   python3 -m venv .venv
+   # Ubuntu / debian
+   sudo apt install ffmpeg python3-full
+
+   #MacOS
+   brew install ffmpeg python
+
+   #Windows
+   idk, you should not be using wind*ws in the first place for development
+   ```
+   Setting up project:
+   ```bash
+   python3.12 -m venv .venv
+   # Note: python3.14 are known to have some issues, so use python version of somewhere between 9-13
    source ./.venv/bin/activate
    pip install -r requirements.txt
    # Completely Optional: Install aria2 for experimental downloads (not recommened, unless for devs)
@@ -35,11 +50,20 @@ A simple, high-performance Telegram bot to download videos from YouTube, TikTok,
    api_id = 123456
    api_hash = "your_api_hash"
    ```
+   Optional:
+   ```
+   Sending logs to a channel, enter the channel id
+   logs = -1234567890
+   ```
 
 4. **Run the bot**
    ```bash
    python main.py
    ```
+
+---
+How it works:
+downloads -> instead of uploading create webserver -> expose the tmp dir to public -> pass the public url to telegram -> uploads instantly
 
 ## Credits
 

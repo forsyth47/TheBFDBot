@@ -36,7 +36,7 @@ class UserManager:
 
     def add_user(self, user_id):
         if not self.get_user(user_id):
-            new_user = {"id": user_id, "quality": "ask"}
+            new_user = {"id": user_id, "quality": "720"}
             self.data["users"].append(new_user)
             self.save_data()
             return new_user

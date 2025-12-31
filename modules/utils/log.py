@@ -1,8 +1,10 @@
 import datetime
 import config
 from pyrogram import Client, types
+from modules.utils.basic import BasicUtils
 
-LOG_FILE = "log.txt"
+BasicUtils.ensure_directory_exists("data/logs")
+LOG_FILE = "data/logs/log.txt"
 
 async def log(app: Client, message: types.Message = None, text: str = "", level: str = "INFO"):
     """

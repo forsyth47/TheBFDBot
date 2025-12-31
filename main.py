@@ -20,18 +20,20 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.errors import MessageNotModified
 
 import config
-import log as logger
-from users import UserManager
+import modules.utils.log as logger
+from modules.utils.users import UserManager
+from modules.router import route
 
 # Try to import Redis client
 try:
-    from redis_client import r as redis_client
-    REDIS_AVAILABLE = True
-    print("✅ Redis client loaded successfully.")
+    from modules.connectors.redis_client import r as redis_client
+    REDIS_AVAILABLE = redis_client.redis_enabled
+    if REDIS_AVAILABLE:
+        print("✅ Redis client loaded successfully.")
 except Exception as e:
     REDIS_AVAILABLE = False
     redis_client = None
-    # print(f"⚠️ Redis client could not be loaded: {e}")
+    print(f"⚠️ Redis client could not be loaded: {e}")
 
 # Initialize the Pyrogram Client
 app = Client(
@@ -69,18 +71,6 @@ def format_time(seconds):
     if not seconds: return "0s"
     return str(datetime.timedelta(seconds=int(seconds)))
 
-def youtube_url_validation(url):
-    youtube_regex = (
-        r'(https?://)?(www\.)?'
-        r'(youtube|youtu|youtube-nocookie)\.(com|be)/'
-        r'(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})')
-
-    youtube_regex_match = re.match(youtube_regex, url)
-    if youtube_regex_match:
-        return youtube_regex_match
-
-    return youtube_regex_match
-
 @app.on_message(filters.command(['start', 'help']))
 async def start_command(client: Client, message: Message):
     print(f"Start command received. Args: {message.command}, Redis Available: {REDIS_AVAILABLE}")
@@ -88,7 +78,7 @@ async def start_command(client: Client, message: Message):
     if len(message.command) > 1 and REDIS_AVAILABLE:
         token = message.command[1]
         key = f"dl:{token}"
-        print(f"Checking Redis for key: {key}")
+        # print(f"Checking Redis for key: {key}")
 
         try:
             raw = redis_client.get(key)
@@ -123,94 +113,9 @@ async def get_id(client: Client, message: Message):
     chat = message.chat
     await message.reply(f"**Chat ID:** `{chat.id}`\n**Type:** {chat.type}")
 
-async def show_youtube_selection(message, url):
-    msg = await message.reply("Fetching available formats...")
-    youtube_selection_cache[msg.id] = url
-
-    def get_info():
-        with yt_dlp.YoutubeDL() as ydl:
-            return ydl.extract_info(url, download=False)
-
-    try:
-        info = await asyncio.to_thread(get_info)
-
-        buttons = []
-        # Filter formats
-        formats = info.get('formats', [])
-        # Get unique heights for video
-        resolutions = set()
-        for f in formats:
-            if f.get('vcodec') != 'none' and f.get('height'):
-                resolutions.add(f['height'])
-
-        # Sort resolutions descending
-        sorted_res = sorted(list(resolutions), reverse=True)
-
-        for res in sorted_res:
-            btn_text = f"{res}p"
-            buttons.append(InlineKeyboardButton(btn_text, callback_data=f"yt|video|{res}"))
-
-        # Add Audio button
-        buttons.append(InlineKeyboardButton("Audio (MP3)", callback_data="yt|audio"))
-
-        # Layout buttons
-        keyboard = []
-        row = []
-        for btn in buttons:
-            row.append(btn)
-            if len(row) == 3:
-                keyboard.append(row)
-                row = []
-        if row:
-            keyboard.append(row)
-
-        markup = InlineKeyboardMarkup(keyboard)
-        await msg.edit("Select quality:", reply_markup=markup)
-
-    except Exception as e:
-        await msg.edit(f"Error fetching formats: {e}")
+# show_youtube_selection moved to modules/providers/general/general_provider.py
 
 async def download_video(message: Message, url, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None):
-    url_info = urlparse(url)
-
-    # Auto-detect audio mode for music platforms
-    if not audio:
-        domain = url_info.netloc.lower()
-        if any(x in domain for x in ['soundcloud.com', 'mixcloud.com', 'bandcamp.com']):
-            audio = True
-
-    if url_info.scheme:
-        if url_info.netloc in ['www.youtube.com', 'youtu.be', 'youtube.com', 'youtu.be']:
-            if not youtube_url_validation(url):
-                await message.reply('Invalid URL')
-                return
-
-            # Show quality selection for YouTube if default format
-            if format_id == "bestvideo+bestaudio/best" and not audio:
-                # Check user preference
-                user_id = message.from_user.id if message.from_user else 0
-                pref = user_manager.get_quality(user_id)
-
-                if pref == "ask":
-                    await show_youtube_selection(message, url)
-                    return
-                elif pref == "audio":
-                    audio = True
-                    # Fall through to download
-                else:
-                    # Set specific quality (Prioritize H.264/AAC for compatibility)
-                    if pref == "best":
-                        format_id = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best"
-                    else:
-                        # e.g. 720p -> bestvideo[height<=720][vcodec^=avc1]+...
-                        try:
-                            res = int(pref.replace("p", ""))
-                            format_id = f"bestvideo[height<={res}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<={res}]+bestaudio/best[height<={res}]"
-                        except ValueError:
-                            format_id = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best"
-
-                    # Fall through to download with new format_id
-
         # Use UUID for unique filenames to prevent collisions between users
         video_id = str(uuid.uuid4())
         active_downloads[video_id] = {'action': None, 'last_info': None}
@@ -227,9 +132,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
         gif_msg = await message.reply_animation("https://media.tenor.com/akRQReAe9JoAAAAM/walter-white-let-him-cook.gif")
 
         # Send Tip/Status Message
-        tip_text = "__Initializing download... Please wait while I cook.__"
-        if 'pref' in locals() and pref != "ask":
-             tip_text = f"__Video will be downloaded at `{pref}` quality. Visit /settings to update.__\n\n{tip_text}"
+        tip_text = f"__Hol'up while we cook!__\n\nVisit /settings to update the quality setting."
 
         msg = await message.reply(tip_text)
 
@@ -349,56 +252,46 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
 
                 except Exception as e:
                     print(f"Error in progress hook: {e}")
-        if not os.path.exists(config.output_folder):
-            os.makedirs(config.output_folder)
-
-        output_path = f'{config.output_folder}/{video_id}.%(ext)s'
-
-        ydl_opts = {
-            'format': format_id,
-            'outtmpl': output_path,
-            'progress_hooks': [progress],
-            'max_filesize': config.max_filesize,
-            'http_chunk_size': 10485760, # 10MB
-            'remote_components': {'ejs:github'},
-            'concurrent_fragment_downloads': 10,
-            'quiet': False,
-            'noprogress': False,
-            'retries': 3,
-            'fragment_retries': 3,
-            'socket_timeout': 10, # Retry stuck fragments quickly
-            'buffersize': 1024 * 1024 * 10, # 10MB buffer
-        }
-
-        if audio:
-            # Force best audio for audio-only downloads
-            ydl_opts['format'] = 'bestaudio/best'
-            ydl_opts['writethumbnail'] = True
-            ydl_opts['postprocessors'] = [
-                {
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                },
-                {'key': 'EmbedThumbnail'},
-                {'key': 'FFmpegMetadata'},
-            ]
-        else:
-            # Merge to mp4 for video downloads
-            ydl_opts['merge_output_format'] = 'mp4'
-
-        # Run blocking yt-dlp code in a separate thread to avoid blocking the event loop
-        def run_yt_dlp():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                return ydl.extract_info(url, download=True)
 
         filepath = None
         info = None
 
         try:
-            info = await asyncio.to_thread(run_yt_dlp)
+            print(f"Received message: {message.text}")
+            # Call router
+            result = await route(
+                url=url,
+                client=app,
+                message=message,
+                progress_callback=progress,
+                user_manager=user_manager,
+                video_id=video_id,
+                audio=audio,
+                format_id=format_id,
+                custom_title=custom_title
+            )
+
+            if result.get("status") == "interaction_required":
+                # Stop progress task as we are waiting for user interaction
+                if not progress_task.done():
+                    progress_task.cancel()
+                # Clean up active download
+                if video_id in active_downloads:
+                    del active_downloads[video_id]
+                if video_id in download_progress:
+                    del download_progress[video_id]
+                # Delete the "Initializing" message since the provider sent a new one or edited it
+                try:
+                    await msg.delete()
+                except:
+                    pass
+                return
+
+            if result.get("status") == "error":
+                raise Exception(result.get("message"))
 
             if custom_title:
-                info['title'] = custom_title
+                result['title'] = custom_title
 
             # Stop progress task
             if not progress_task.done():
@@ -409,8 +302,11 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                     pass
 
             # Find the downloaded file
-            if 'requested_downloads' in info:
-                filepath = info['requested_downloads'][0]['filepath']
+
+            if result.get('isUrl') == True:
+                filepath = result.get('url')
+            elif result.get("filepath") is not None:
+                filepath = result.get("filepath")
             else:
                 # Fallback: look for file starting with video_id
                 for file in os.listdir(config.output_folder):
@@ -465,7 +361,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             await logger.log(app, message, f"General error: {e}", level="ERROR")
             return
 
-        if not filepath or not os.path.exists(filepath):
+        if not filepath or (not result.get('isUrl') and not os.path.exists(filepath)):
             await msg.edit("Could not find downloaded file.")
             await logger.log(app, message, f"File not found after download: {video_id}", level="ERROR")
             return
@@ -489,70 +385,71 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                 await msg.edit(f"Uploading to Telegram...\n\n{perc}%")
             except Exception:
                 pass        # Generate caption
-        title = info.get('title', 'Unknown')
-        original_url = info.get('webpage_url', url)
-        file_size = os.path.getsize(filepath)
-        size_str = format_bytes(file_size)
+        title = result.get('title', 'Unknown')
+        original_url = result.get('webpage_url', url)
+
+        if result.get('isUrl'):
+            file_size = 0 # Unknown size for URL
+            size_str = "Unknown"
+        else:
+            file_size = os.path.getsize(filepath)
+            size_str = format_bytes(file_size)
 
         # Rename audio file to title
         if audio:
             try:
                 safe_title = "".join([c for c in title if c.isalnum() or c in [' ', '-', '_']]).strip()
                 if not safe_title: safe_title = "audio"
-                ext = os.path.splitext(filepath)[1]
-                new_filename = f"{safe_title}{ext}"
-                new_filepath = os.path.join(config.output_folder, new_filename)
-                os.rename(filepath, new_filepath)
-                filepath = new_filepath
+
+                if result.get('isUrl'):
+                     # Can't rename URL, but we can set filename for upload if supported,
+                     # though reply_audio with url usually takes filename from url or metadata
+                     pass
+                else:
+                    ext = os.path.splitext(filepath)[1]
+                    new_filename = f"{safe_title}{ext}"
+                    new_filepath = os.path.join(config.output_folder, new_filename)
+                    os.rename(filepath, new_filepath)
+                    filepath = new_filepath
             except Exception as e:
                 print(f"Rename error: {e}")
 
         if audio:
             ext = info.get('ext', 'mp3')
-            duration = format_time(info.get('duration'))
             acodec = info.get('acodec', 'Unknown')
-
             caption = (
                 f"🎵 **{title}.{ext}**\n\n"
-                f"⏱ **Duration:** {duration}\n"
                 f"💾 **Size:** {size_str}\n"
                 f"🔊 **Codec:** {acodec}\n\n"
                 f"🔗 [Original Link]({original_url})"
             )
         else:
-            ext = info.get('ext', 'mp4')
-            resolution = info.get('resolution') or f"{info.get('width')}x{info.get('height')}"
-            fps = info.get('fps')
-            vcodec = info.get('vcodec', 'Unknown')
-            acodec = info.get('acodec', 'Unknown')
-            duration = format_time(info.get('duration'))
-
+            ext = result.get('ext', 'mp4')
+            resolution = result.get('resolution') or "NonexNone"
             caption = (
                 f"📹 **{title}.{ext}**\n\n"
                 f"📐 **Resolution:** {resolution}\n"
-                f"⏱ **Duration:** {duration}\n"
                 f"💾 **Size:** {size_str}\n"
-                f"🎞 **FPS:** {fps}\n"
-                f"⚙️ **Codec:** {vcodec} (Video) / {acodec} (Audio)\n\n"
                 f"🔗 [Original Link]({original_url})"
             )
 
         try:
             if audio:
-                performer = info.get('artist') or info.get('uploader') or info.get('creator') or 'Unknown'
-                duration = int(info.get('duration') or 0)
+                performer = result.get('artist') or result.get('uploader') or result.get('creator') or 'Unknown'
+                duration = int(result.get('duration') or 0)
                 await message.reply_audio(
                     audio=filepath,
                     caption=caption,
                     progress=upload_progress,
                     title=title,
                     performer=performer,
-                    duration=duration
+                    duration=duration,
+                    quote=True
                 )
             else:
-                width = int(info.get('width') or 0)
-                height = int(info.get('height') or 0)
-                duration = int(info.get('duration') or 0)
+                width = int(result.get('width') or 0)
+                height = int(result.get('height') or 0)
+                duration = int(result.get('duration') or 0)
 
                 await message.reply_video(
                     video=filepath,
@@ -561,7 +458,8 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                     height=height,
                     duration=duration,
                     progress=upload_progress,
-                    supports_streaming=True
+                    supports_streaming=True,
+                    quote=True
                 )
 
             await msg.delete()
@@ -572,6 +470,12 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             await logger.log(app, message, f"Upload failed: {e}", level="ERROR")
         finally:
             # Cleanup
+            if not gif_deleted:
+                try:
+                    await gif_msg.delete()
+                except Exception:
+                    pass
+
             if video_id in active_downloads:
                 del active_downloads[video_id]
             if video_id in download_progress:
@@ -605,8 +509,6 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             for k in keys_to_remove:
                 last_edited.pop(k, None)
 
-    else:
-        await message.reply('Invalid URL')
 def get_text(message: Message):
     if not message:
         return None

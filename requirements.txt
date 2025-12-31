@@ -1,4 +1,19 @@
-yt-dlp
+# Telegram Bot API library
 pyrogram
 tgcrypto
+uvloop
+
+# YT-DLP for downloading media
+yt-dlp
+
+# Redis client
 redis
+
+# SpotDL for downloading from Spotify
+spotdl
+
+# FFmpeg for media processing
+# ffmpeg-python
+
+# Webserver
+# flask
