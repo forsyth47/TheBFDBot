@@ -23,6 +23,7 @@ import config
 import modules.utils.log as logger
 from modules.utils.users import UserManager
 from modules.router import route
+from modules.utils.subtitles import embed_subtitles
 
 # Try to import Redis client
 try:
@@ -89,10 +90,11 @@ async def start_command(client: Client, message: Message):
 
                 url = data.get('url')
                 title = data.get('title')
+                subtitles = data.get('subtitles')
 
                 if url:
                     await message.reply(f"📥 **Found download:**\n`{title}`")
-                    asyncio.create_task(download_video(message, url, custom_title=title))
+                    asyncio.create_task(download_video(message, url, custom_title=title, subtitles=subtitles))
                     return
                 else:
                     await message.reply("❌ Invalid data in link.")
@@ -115,7 +117,7 @@ async def get_id(client: Client, message: Message):
 
 # show_youtube_selection moved to modules/providers/general/general_provider.py
 
-async def download_video(message: Message, url, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None):
+async def download_video(message: Message, url, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None, subtitles=None):
         # Use UUID for unique filenames to prevent collisions between users
         video_id = str(uuid.uuid4())
         active_downloads[video_id] = {'action': None, 'last_info': None}
@@ -365,6 +367,11 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             await msg.edit("Could not find downloaded file.")
             await logger.log(app, message, f"File not found after download: {video_id}", level="ERROR")
             return
+
+        # Embed subtitles if provided and file exists locally
+        if subtitles and filepath and os.path.exists(filepath) and not result.get('isUrl'):
+             await msg.edit("Embedding subtitles...")
+             filepath = await embed_subtitles(filepath, subtitles)
 
         await msg.edit('Sending file to Telegram...')
         await logger.log(app, message, f"Download complete, uploading: {filepath}", level="INFO")
