@@ -146,6 +146,10 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
             last_update_time = 0
             while video_id in active_downloads and not STOP_REQUESTED:
                 try:
+                    # Check if cancellation is requested
+                    if active_downloads.get(video_id, {}).get('action'):
+                        break
+
                     now = time.time()
                     if now - last_update_time < MESSAGE_UPDATE_INTERVAL:
                         await asyncio.sleep(1)
