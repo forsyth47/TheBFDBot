@@ -9,6 +9,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 import config
 from modules.utils.validator import UrlValidator
+from modules.utils.exceptions import DownloadCancelled
 
 # Cache for YouTube selection
 youtube_selection_cache = {}
@@ -176,4 +177,7 @@ async def download_real(url, video_id, audio, format_id, progress_callback):
         }
 
     except Exception as e:
+        # Re-raise DownloadCancelled so it propagates to main.py
+        if isinstance(e, DownloadCancelled) or "Bot shutting down" in str(e):
+            raise e
         return {"status": "error", "message": str(e)}

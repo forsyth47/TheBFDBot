@@ -24,6 +24,7 @@ import modules.utils.log as logger
 from modules.utils.users import UserManager
 from modules.router import route
 from modules.utils.subtitles import embed_subtitles
+from modules.utils.exceptions import DownloadCancelled
 
 # Try to import Redis client
 try:
@@ -55,9 +56,9 @@ active_downloads = {}
 download_progress = {}
 youtube_selection_cache = {}
 
-class DownloadCancelled(Exception):
-    def __init__(self, action):
-        self.action = action
+# class DownloadCancelled(Exception):
+#     def __init__(self, action):
+#         self.action = action
 
 # Helper to format bytes
 def format_bytes(b):
