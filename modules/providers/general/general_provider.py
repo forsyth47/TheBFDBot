@@ -60,10 +60,7 @@ async def show_youtube_selection(client, message, url, cache_dict):
         await msg.edit(f"Error fetching formats: {e}")
         return {"status": "error", "message": str(e)}
 
-async def download(url: str, client, message, progress_callback, user_manager, video_id, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None):
-    output_folder = config.output_folder
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder), youtube_selection_cache=None):
+async def download(url: str, client, message, progress_callback, user_manager, video_id, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None, youtube_selection_cache=None):
     output_folder = config.output_folder
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -90,7 +87,10 @@ async def download(url: str, client, message, progress_callback, user_manager, v
                 if pref == "ask":
                     if youtube_selection_cache is None:
                          return {"status": "error", "message": "Internal Error: Cache not provided"}
-                    return await show_youtube_selection(client, message, url, youtube_selection_cache
+                    return await show_youtube_selection(client, message, url, youtube_selection_cache)
+                elif pref == "audio":
+                    audio = True
+                    # Fall through to download
                 else:
                     # Set specific quality (Prioritize H.264/AAC for compatibility)
                     if pref == "best":
