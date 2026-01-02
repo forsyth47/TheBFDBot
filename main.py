@@ -275,7 +275,8 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                 video_id=video_id,
                 audio=audio,
                 format_id=format_id,
-                custom_title=custom_title
+                custom_title=custom_title,
+                youtube_selection_cache=youtube_selection_cache
             )
 
             if result.get("status") == "interaction_required":

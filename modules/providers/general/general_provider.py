@@ -11,12 +11,9 @@ import config
 from modules.utils.validator import UrlValidator
 from modules.utils.exceptions import DownloadCancelled
 
-# Cache for YouTube selection
-youtube_selection_cache = {}
-
-async def show_youtube_selection(client, message, url):
+async def show_youtube_selection(client, message, url, cache_dict):
     msg = await message.reply("Fetching available formats...")
-    youtube_selection_cache[msg.id] = url
+    cache_dict[msg.id] = url
 
     def get_info():
         with yt_dlp.YoutubeDL() as ydl:
@@ -66,6 +63,9 @@ async def show_youtube_selection(client, message, url):
 async def download(url: str, client, message, progress_callback, user_manager, video_id, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None):
     output_folder = config.output_folder
     if not os.path.exists(output_folder):
+        os.makedirs(output_folder), youtube_selection_cache=None):
+    output_folder = config.output_folder
+    if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     url_info = urlparse(url)
@@ -88,10 +88,9 @@ async def download(url: str, client, message, progress_callback, user_manager, v
                 pref = user_manager.get_quality(user_id)
 
                 if pref == "ask":
-                    return await show_youtube_selection(client, message, url)
-                elif pref == "audio":
-                    audio = True
-                    # Fall through to download
+                    if youtube_selection_cache is None:
+                         return {"status": "error", "message": "Internal Error: Cache not provided"}
+                    return await show_youtube_selection(client, message, url, youtube_selection_cache
                 else:
                     # Set specific quality (Prioritize H.264/AAC for compatibility)
                     if pref == "best":

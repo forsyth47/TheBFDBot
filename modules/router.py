@@ -11,7 +11,7 @@ from modules.providers.spotify import spotify_provider
 from modules.providers.instagram import instagram_provider
 from modules.providers.general import general_provider
 
-async def route(url: str, client, message, progress_callback, user_manager, video_id, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None):
+async def route(url: str, client, message, progress_callback, user_manager, video_id, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None, youtube_selection_cache=None):
     validator = UrlValidator(url)
     result = None
 
@@ -34,7 +34,7 @@ async def route(url: str, client, message, progress_callback, user_manager, vide
 
     elif validator.isUrl():
         print("Routing to General provider...")
-        result = await general_provider.download(url, client, message, progress_callback, user_manager, video_id, audio, format_id, custom_title)
+        result = await general_provider.download(url, client, message, progress_callback, user_manager, video_id, audio, format_id, custom_title, youtube_selection_cache)
     else:
         return {"status": "error", "message": "Invalid URL"}
 
