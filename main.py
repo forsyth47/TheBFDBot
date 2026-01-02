@@ -415,21 +415,23 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                 if not safe_title: safe_title = "audio"
 
                 if result.get('isUrl'):
-                     # Can't rename URL, but we can set filename for upload if supported,
-                     # though reply_audio with url usually takes filename from url or metadata
+                     # Can't rename URL
                      pass
                 else:
                     ext = os.path.splitext(filepath)[1]
+                    # Ensure extension matches the actual file type if possible, or trust the file
                     new_filename = f"{safe_title}{ext}"
                     new_filepath = os.path.join(config.output_folder, new_filename)
+                    if os.path.exists(new_filepath):
+                        os.remove(new_filepath)
                     os.rename(filepath, new_filepath)
                     filepath = new_filepath
             except Exception as e:
                 print(f"Rename error: {e}")
 
         if audio:
-            ext = info.get('ext', 'mp3')
-            acodec = info.get('acodec', 'Unknown')
+            ext = result.get('ext', 'mp3')
+            acodec = result.get('acodec', 'Unknown')
             caption = (
                 f"🎵 **{title}.{ext}**\n\n"
                 f"💾 **Size:** {size_str}\n"

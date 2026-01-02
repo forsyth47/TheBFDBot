@@ -132,6 +132,7 @@ async def download_real(url, video_id, audio, format_id, progress_callback):
             {
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
+                'preferredquality': '192',
             },
             {'key': 'EmbedThumbnail'},
             {'key': 'FFmpegMetadata'},
