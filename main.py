@@ -7,6 +7,7 @@ import uuid
 import shutil
 import json
 from urllib.parse import urlparse
+from modules.webserver.logfile import serve_logs_via_web_server
 
 # Fix for Python 3.10+ where get_event_loop() raises RuntimeError if no loop is set
 try:
@@ -666,7 +667,7 @@ async def command_handler(client, message):
     command = get_text(message)
     if not command:
         # example grep 'message received' while ignoring if the line has [COMMAND]
-        await message.reply("Invalid usage, use `/c your_command`\n\nExample: `/c tail -n 25 log.txt | grep 'DOWNLOAD' | grep -v '\\[COMMAND\\]'`")
+        await message.reply("Invalid usage, use `/c your_command`\n\nExample: `/c tail -n 25 data/logs/log.txt | grep 'DOWNLOAD' | grep -v '\\[COMMAND\\]'` \n or \n `/c jq '.users | length' data/userdata.json`")
         return
 
     await logger.log(app, message, f"Command received: {command}", level="COMMAND")
@@ -722,6 +723,8 @@ if __name__ == "__main__":
         await app.start()
         await logger.log(app, None, "Bot started", level="SUCCESS")
         print("Bot started...")
+        # Start log file web server
+        serve_logs_via_web_server()
         await idle()
         print("\nStopping bot...")
         await logger.log(app, None, "Bot stopping", level="WARNING")
