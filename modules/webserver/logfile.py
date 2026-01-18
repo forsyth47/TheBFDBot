@@ -35,7 +35,7 @@ def run_server():
     app.run(host='0.0.0.0', port=PORT, threaded=True)
 
 def serve_logs_via_web_server():
-    t = Thread(target=run_server)
+    t = Thread(target=run_server, daemon=True)
     t.start()
 
 if __name__ == "__main__":
