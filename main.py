@@ -24,6 +24,7 @@ import config
 import modules.utils.log as logger
 from modules.utils.users import UserManager
 from modules.router import route
+from modules.providers.general import general_provider
 from modules.utils.subtitles import embed_subtitles
 from modules.utils.exceptions import DownloadCancelled
 
@@ -467,16 +468,71 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                 height = int(result.get('height') or 0)
                 duration = int(result.get('duration') or 0)
 
-                await message.reply_video(
-                    video=filepath,
-                    caption=caption,
-                    width=width,
-                    height=height,
-                    duration=duration,
-                    progress=upload_progress,
-                    supports_streaming=True,
-                    quote=True
-                )
+                try:
+                    await message.reply_video(
+                        video=filepath,
+                        caption=caption,
+                        width=width,
+                        height=height,
+                        duration=duration,
+                        progress=upload_progress,
+                        supports_streaming=True,
+                        quote=True
+                    )
+
+                # Handle WEBPAGE_CURL_FAILED for URL uploads, mainly for Instagram
+                except Exception as e_upload:
+                    # Check for WEBPAGE_CURL_FAILED (Telegram server could not fetch the URL)
+                    # This happens when file is > 20MB (approx) for URL uploads
+                    if "WEBPAGE_CURL_FAILED" in str(e_upload) and result.get('isUrl'):
+                        await msg.edit("⚠️ URL upload failed (likely too large). Downloading manually...")
+
+                        # Fallback: Download using general provider
+                        dl_result = await general_provider.download(
+                            url=filepath, # This is the direct link extracted previously
+                            client=app,
+                            message=message,
+                            progress_callback=progress,
+                            user_manager=user_manager,
+                            video_id=video_id,
+                            audio=audio,
+                            format_id=format_id,
+                            custom_title=custom_title,
+                            youtube_selection_cache=youtube_selection_cache
+                        )
+
+                        if dl_result.get("status") == "error":
+                            raise Exception(f"Fallback download failed: {dl_result.get('message')}")
+
+                        # Update to local file
+                        filepath = dl_result.get('filepath')
+                        if not filepath or not os.path.exists(filepath):
+                             raise Exception("Fallback download finished but file not found.")
+
+                        # Update metadata
+                        file_size = os.path.getsize(filepath)
+                        size_str = format_bytes(file_size)
+
+                        caption = (
+                            f"📹 **{title}.{ext}**\n\n"
+                            f"📐 **Resolution:** {resolution}\n"
+                            f"💾 **Size:** {size_str}\n"
+                            f"🔗 [Original Link]({original_url})"
+                        )
+
+                        # Retry upload with local file
+                        await message.reply_video(
+                            video=filepath,
+                            caption=caption,
+                            width=width,
+                            height=height,
+                            duration=duration,
+                            progress=upload_progress,
+                            supports_streaming=True,
+                            quote=True
+                        )
+                    else:
+                        raise e_upload
 
             await msg.delete()
             await logger.log(app, message, f"Upload completed successfully: {title}", level="SUCCESS")

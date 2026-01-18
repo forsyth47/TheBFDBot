@@ -21,16 +21,19 @@ async def log(app: Client, message: types.Message = None, text: str = "", level:
 
 def log_local(message, text, level):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"[{timestamp}] [{level}] {text}"
+    entry = f"[{timestamp}] [{level}]"
 
     if message:
         try:
             user_id = message.from_user.id if message.from_user else "Unknown"
+            profileName = message.from_user.first_name if message.from_user else "Unknown"
             username = message.from_user.username if message.from_user else "Unknown"
             chat_id = message.chat.id if message.chat else "Unknown"
-            entry += f" | User: {username} ({user_id}) | Chat: {chat_id}"
+            entry += f" | {profileName} [@{username} ({user_id})] | Chat: {chat_id}"
         except Exception:
             pass
+
+    entry += f" | {text}"
 
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
