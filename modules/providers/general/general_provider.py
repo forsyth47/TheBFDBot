@@ -167,6 +167,8 @@ async def download_real(url, video_id, audio, format_id, progress_callback):
             "title": info.get('fulltitle', ''),
             "thumbnail": info.get('thumbnail', ''),
             "resolution": info.get('resolution', 'NonexNone') if not audio else None,
+            "width": info.get('width'),
+            "height": info.get('height'),
             "duration": info.get('duration'),
             "original_url": info.get('webpage_url', url),
             "acodec": info.get('acodec', 'Unknown') if audio else None,

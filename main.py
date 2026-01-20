@@ -131,7 +131,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
         # Buttons
         cancel_btn = InlineKeyboardButton("❌ Cancel", callback_data=f"cancel|del|{video_id}")
         send_btn = InlineKeyboardButton("📤 Send Partial", callback_data=f"cancel|send|{video_id}")
-        keyboard = InlineKeyboardMarkup([[cancel_btn, send_btn]])
+        keyboard = InlineKeyboardMarkup([[cancel_btn]])
 
         # Send GIF
         gif_msg = await message.reply_animation("https://media.tenor.com/akRQReAe9JoAAAAM/walter-white-let-him-cook.gif")
@@ -382,7 +382,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
              filepath = await embed_subtitles(filepath, subtitles)
 
         await msg.edit('Sending file to Telegram...')
-        await logger.log(app, message, f"Download complete, uploading: {filepath}", level="INFO")
+        await logger.log(app, message, f"Download complete, uploading: {filepath}", level="UPLOADIN")
 
         # Upload progress
         async def upload_progress(current, total):
@@ -535,7 +535,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
                         raise e_upload
 
             await msg.delete()
-            await logger.log(app, message, f"Upload completed successfully: {title}", level="SUCCESS")
+            await logger.log(app, message, f"Upload completed successfully: {title} | {original_url}", level="SUCCESS")
         except Exception as e:
             print(f"Upload error: {e}")
             await msg.edit(f"Couldn't send file. Error: {e}")
