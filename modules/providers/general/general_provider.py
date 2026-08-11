@@ -62,6 +62,8 @@ async def show_youtube_selection(client, message, url, cache_dict):
 
 async def download(url: str, client, message, progress_callback, user_manager, video_id, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None, youtube_selection_cache=None):
     output_folder = config.output_folder
+    cookiefile = None
+    
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -72,11 +74,16 @@ async def download(url: str, client, message, progress_callback, user_manager, v
         domain = url_info.netloc.lower()
         if any(x in domain for x in ['soundcloud.com', 'mixcloud.com', 'bandcamp.com']):
             audio = True
-
+    
     if url_info.scheme:
-        if url_info.netloc in ['www.youtube.com', 'youtu.be', 'youtube.com', 'youtu.be']:
+        if url_info.netloc in ['www.youtube.com', 'youtu.be', 'youtube.com']:
+            
             if not UrlValidator(url).isYouTube():
                 return {"status": "error", "message": "Invalid URL"}
+            if os.path.exists(config.youtube_cookie_file):
+                cookiefile = config.youtube_cookie_file
+            else:
+                cookiefile = os.path.join('cookies', 'youtube_cookies.txt')
 
             # Show quality selection for YouTube if default format
             if format_id == "bestvideo+bestaudio/best" and not audio:
@@ -103,9 +110,9 @@ async def download(url: str, client, message, progress_callback, user_manager, v
                         except ValueError:
                             format_id = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best"
 
-    return await download_real(url, video_id, audio, format_id, progress_callback)
+    return await download_real(url, video_id, audio, format_id, progress_callback, cookiefile=cookiefile)
 
-async def download_real(url, video_id, audio, format_id, progress_callback):
+async def download_real(url, video_id, audio, format_id, progress_callback, cookiefile=None):
     output_path = f'{config.output_folder}/{video_id}.%(ext)s'
 
     ydl_opts = {
@@ -113,7 +120,7 @@ async def download_real(url, video_id, audio, format_id, progress_callback):
         'outtmpl': output_path,
         'progress_hooks': [progress_callback],
         'max_filesize': config.max_filesize,
-        'http_chunk_size': 10485760, # 10MB
+        'http_chunk_size': 10485760,
         'remote_components': {'ejs:github'},
         'concurrent_fragment_downloads': 10,
         'quiet': False,
@@ -125,6 +132,9 @@ async def download_real(url, video_id, audio, format_id, progress_callback):
         'noplaylist': True,
     }
 
+    if cookiefile:
+        ydl_opts['cookiefile'] = cookiefile
+        
     if audio:
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['writethumbnail'] = True
