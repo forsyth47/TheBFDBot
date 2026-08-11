@@ -8,6 +8,8 @@ logs = None  # logs channel id, if none set to None
 max_filesize = 2000000000  # bytes (2GB)
 output_folder="./tmp"
 
+youtube_cookie_file = "cookies/youtube_cookies.txt"
+
 ### Redis configuration
 redis_enabled = False  # Enable or disable Redis usage (I've added redis for my own use, so that it integrates with my other bots, but its not needed for anyone else)
 # Uses default options below, uncomment to customize if needed
