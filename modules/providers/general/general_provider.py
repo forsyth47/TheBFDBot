@@ -11,12 +11,15 @@ import config
 from modules.utils.validator import UrlValidator
 from modules.utils.exceptions import DownloadCancelled
 
-async def show_youtube_selection(client, message, url, cache_dict):
+async def show_youtube_selection(client, message, url, cache_dict, cookiefile=None):
     msg = await message.reply("Fetching available formats...")
     cache_dict[msg.id] = url
 
     def get_info():
-        with yt_dlp.YoutubeDL() as ydl:
+        opts = {}
+        if cookiefile and os.path.exists(cookiefile):
+            opts["cookiefile"] = cookiefile
+        with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
     try:
@@ -76,15 +79,18 @@ async def download(url: str, client, message, progress_callback, user_manager, v
             audio = True
     
     if url_info.scheme:
-        if url_info.netloc in ['www.youtube.com', 'youtu.be', 'youtube.com']:
-            
+        domain = url_info.netloc.lower().split(":")[0]
+        is_youtube = domain == "youtu.be" or domain.endswith("youtube.com")
+
+        if is_youtube:
             if not UrlValidator(url).isYouTube():
                 return {"status": "error", "message": "Invalid URL"}
             if os.path.exists(config.youtube_cookie_file):
                 cookiefile = config.youtube_cookie_file
             else:
-                cookiefile = os.path.join('cookies', 'youtube_cookies.txt')
-
+                fallback = os.path.join('cookies', 'youtube_cookies.txt')
+                if os.path.exists(fallback):
+                    cookiefile = fallback
             # Show quality selection for YouTube if default format
             if format_id == "bestvideo+bestaudio/best" and not audio:
                 # Check user preference
@@ -94,7 +100,7 @@ async def download(url: str, client, message, progress_callback, user_manager, v
                 if pref == "ask":
                     if youtube_selection_cache is None:
                          return {"status": "error", "message": "Internal Error: Cache not provided"}
-                    return await show_youtube_selection(client, message, url, youtube_selection_cache)
+                    return await show_youtube_selection(client, message, url, youtube_selection_cache, cookiefile=cookiefile)
                 elif pref == "audio":
                     audio = True
                     # Fall through to download
