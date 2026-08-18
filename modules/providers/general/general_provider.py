@@ -77,7 +77,7 @@ async def download(url: str, client, message, progress_callback, user_manager, v
         domain = url_info.netloc.lower()
         if any(x in domain for x in ['soundcloud.com', 'mixcloud.com', 'bandcamp.com']):
             audio = True
-    
+
     if url_info.scheme:
         domain = url_info.netloc.lower().split(":")[0]
         is_youtube = domain == "youtu.be" or domain.endswith("youtube.com")
@@ -140,7 +140,7 @@ async def download_real(url, video_id, audio, format_id, progress_callback, cook
 
     if cookiefile:
         ydl_opts['cookiefile'] = cookiefile
-        
+
     if audio:
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['writethumbnail'] = True
@@ -153,6 +153,11 @@ async def download_real(url, video_id, audio, format_id, progress_callback, cook
             {'key': 'EmbedThumbnail'},
             {'key': 'FFmpegMetadata'},
         ]
+        # Ensure output is mp3
+        ydl_opts['merge_output_format'] = 'mp3'
+        # embed metadata and thumbnail for audio files
+        ydl_opts['postprocessors'].append({'key': 'FFmpegMetadata'})
+
     else:
         ydl_opts['merge_output_format'] = 'mp4'
 

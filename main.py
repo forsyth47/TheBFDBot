@@ -134,7 +134,7 @@ async def download_video(message: Message, url, audio=False, format_id="bestvide
         keyboard = InlineKeyboardMarkup([[cancel_btn]])
 
         # Send GIF
-        gif_msg = await message.reply_animation("https://media.tenor.com/akRQReAe9JoAAAAM/walter-white-let-him-cook.gif")
+        gif_msg = await message.reply_animation("https://media1.tenor.com/m/2QgTA5XJoyUAAAAC/yuru-yuri-anime.gif")
 
         # Send Tip/Status Message
         tip_text = f"__Hol'up while we cook!__\n\nVisit /settings to update the quality setting."
