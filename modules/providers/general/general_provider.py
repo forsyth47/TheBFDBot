@@ -66,7 +66,7 @@ async def show_youtube_selection(client, message, url, cache_dict, cookiefile=No
 async def download(url: str, client, message, progress_callback, user_manager, video_id, audio=False, format_id="bestvideo+bestaudio/best", custom_title=None, youtube_selection_cache=None):
     output_folder = config.output_folder
     cookiefile = None
-    
+
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -128,11 +128,19 @@ async def download_real(url, video_id, audio, format_id, progress_callback, cook
         'max_filesize': config.max_filesize,
         'http_chunk_size': 10485760,
         'remote_components': {'ejs:github'},
-        'concurrent_fragment_downloads': 10,
+        # Robust HLS/fragment download settings to avoid "Conflicting range" errors:
+        # - Use MPEG-TS container for HLS (avoids fmp4 fragment range issues)
+        # - Disable concurrent fragment downloads (prevents race conditions in range calc)
+        # - Use ffmpeg instead of native HLS downloader (more stable)
+        # - Increase fragment retries for transient errors
+        'concurrent_fragment_downloads': 1,
+        'hls_use_mpegts': True,
+        'hls_prefer_native': False,
         'quiet': False,
         'noprogress': False,
         'retries': 3,
-        'fragment_retries': 3,
+        'fragment_retries': 10,
+        'extractor_retries': 3,
         'socket_timeout': 10,
         'buffersize': 1024 * 1024 * 10,
         'noplaylist': True,
@@ -144,19 +152,19 @@ async def download_real(url, video_id, audio, format_id, progress_callback, cook
     if audio:
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['writethumbnail'] = True
+        # Convert thumbnail to jpg for compatibility with EmbedThumbnail
         ydl_opts['postprocessors'] = [
             {
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             },
+            {'key': 'FFmpegThumbnailsConvertor', 'format': 'jpg'},
             {'key': 'EmbedThumbnail'},
             {'key': 'FFmpegMetadata'},
         ]
         # Ensure output is mp3
         ydl_opts['merge_output_format'] = 'mp3'
-        # embed metadata and thumbnail for audio files
-        ydl_opts['postprocessors'].append({'key': 'FFmpegMetadata'})
 
     else:
         ydl_opts['merge_output_format'] = 'mp4'
